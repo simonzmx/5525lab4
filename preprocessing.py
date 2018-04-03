@@ -1,9 +1,10 @@
 import pandas as pd
+import csv
 
 
 def data_preparation(file_name, dic_name, sl_name, split_file):
     # load sentences and splits
-    df = pd.read_csv(file_name, delimiter='\t', encoding='utf-8')
+    df = pd.read_csv(file_name, delimiter='\t')
     df_split = pd.read_csv(split_file, delimiter=',')
 
     # clean sentences
@@ -85,11 +86,16 @@ def clean_sentence(sentence):
     return sentence
 
 
-train, dev, test = data_preparation('stanfordSentimentTreebank/datasetSentences.txt',
-                                    'stanfordSentimentTreebank/dictionary.txt',
-                                    'stanfordSentimentTreebank/sentiment_labels.txt',
-                                    'stanfordSentimentTreebank/datasetSplit.txt')
+if __name__ == "__main__":
+    train, dev, test = data_preparation('stanfordSentimentTreebank/datasetSentences.txt',
+                                        'stanfordSentimentTreebank/dictionary.txt',
+                                        'stanfordSentimentTreebank/sentiment_labels.txt',
+                                        'stanfordSentimentTreebank/datasetSplit.txt')
 
-train.to_csv('train.csv', index=None)
-dev.to_csv('dev.csv', index=None)
-test.to_csv('test.csv', index=None)
+    train[['sentence']].to_csv('train.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+    dev[['sentence']].to_csv('dev.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+    test[['sentence']].to_csv('test.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+
+    train[['labels']].to_csv('train_labels.txt', header=None, index=None)
+    dev[['labels']].to_csv('dev_labels.txt', header=None, index=None)
+    test[['labels']].to_csv('test_labels.txt', header=None, index=None)
