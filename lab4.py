@@ -4,6 +4,9 @@ from keras.models import Sequential
 from keras.layers import LSTM, Dense, Activation
 import pandas
 
+# count how many sentences cant be found in the 'sentiment_labels.txt'
+global ucount
+ucount = 0
 
 def data_preparation(file_name, dic_name, sl_name, split_file):
     # load sentences and splits
@@ -27,6 +30,32 @@ def data_preparation(file_name, dic_name, sl_name, split_file):
     return train, dev, test, sen_sen_df
 
 
+def get_sentimental_label(sentence, dic, senlab):
+    global ucount
+    # get a sentence's sentiment label
+    # from 'dictionary.txt' and 'sentiment_labels.txt'
+    if (not dic['index'].loc[dic['phrase'] == sentence].values):
+        # the sentence cant be found in the 'sentiment_labels.txt'
+        ucount += 1
+        print('Unknown           ' + str(ucount))
+        return(0.5)
+    index = dic['index'].loc[dic['phrase'] == sentence].values[0]
+    label = senlab['sentiment values'].loc[senlab['phrase ids'] == index].values[0]
+    return label
+
+
+def get_sentiment_sentences_dataframe(df, dic, senlab):
+    # generate a dataframe consists of 'sentence' 'sentence ids' 'sentence sentiment labels'
+    labels = []
+    ucount = 0
+    for i in range(df.shape[0]):
+        labels.append(get_sentimental_label(df['sentence'][i], dic, senlab))
+        print(str(i) + '               ' + str(labels[i]))
+    df['labels'] = labels
+    print('Number of unknown sentences' + str(ucount))
+    return df
+
+
 def train_w2v(train):
     # gensim.models.Word2Vec requires lists of list of word which needs to be done by LineSentence
     train[['sentence']].to_csv('train.txt', header=None, index=None)
@@ -34,7 +63,7 @@ def train_w2v(train):
 
     # train the word2vec model
     # the model gives out a 100d vector representing a word
-    wv_model = gensim.models.Word2Vec(sentences, size=100, window=5, min_count=1, workers=4)
+    wv_model = gensim.models.Word2Vec(sentences, size=300, window=5, min_count=1, workers=4)
 
     return wv_model
 
@@ -46,33 +75,11 @@ def get_vector_sequence(wv_model, sentence, sequence_length):
     # cut off the part beyond sequence_length
     for i in range(sequence_length):
         if i > len(sentence):
-            # pad the sequence with 0's vector
-            vector_sequence.append(np.zeros(100))
+            # pad the sequence with vectors of zeros
+            vector_sequence.append(np.zeros(300))
         else:
-            vector_sequence.append(wv_model.wv(sentence[i]))
+            vector_sequence.append(wv_model.wv[sentence[i]])
     return vector_sequence
-
-
-def get_sentimental_label(sentence, dic, senlab, ucount):
-    # get a sentence's sentiment label
-    # from 'dictionary.txt' and 'sentiment_labels.txt'
-    if (not dic['index'].loc[dic['phrase'] == sentence].values):
-        ucount += 1
-        return(0.5)
-    index = dic['index'].loc[dic['phrase'] == sentence].values[0]
-    label = senlab['sentiment values'].loc[senlab['phrase ids'] == index].values[0]
-    return label
-
-
-def get_sentiment_sentences_dataframe(df, dic, senlab):
-    labels = []
-    ucount = 0
-    for i in range(df.shape[0]):
-        labels.append(get_sentimental_label(df['sentence'][i], dic, senlab, ucount))
-        print(str(i) + '               ' + str(labels[i]))
-    df['labels'] = labels
-    print('Number of unknown sentences' + str(ucount))
-    return df
 
 
 def train_LSTM(train, dev, wv_model):
