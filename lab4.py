@@ -1,86 +1,95 @@
-import numpy as np
-import tensorflow, gensim
-from keras.models import Sequential
-from keras.layers import LSTM, Dense, Activation
-import pandas
+import pandas as pd
 
 
 def data_preparation(file_name, dic_name, sl_name, split_file):
     # load sentences and splits
-    df = pandas.read_csv(file_name, delimiter='\t')
-    split_df = pandas.read_csv(split_file, delimiter=',')
+    df = pd.read_csv(file_name, delimiter='\t', encoding='utf-8')
+    df_split = pd.read_csv(split_file, delimiter=',')
 
-    # split the dataset
-    train = df.loc[split_df['splitset_label'] == 1]
-    dev = df.loc[split_df['splitset_label'] == 3]
-    test = df.loc[split_df['splitset_label'] == 2]
+    # clean sentences
+    df['sentence'] = df['sentence'].apply(clean_sentence)
 
-    #load dictionary
-    dic = pandas.read_csv(dic_name, delimiter='|', header=None)
+    # load dictionary
+    dic = pd.read_csv(dic_name, delimiter='|', header=None)
     dic.columns = ['phrase', 'index']
-    #load sentiment labels
-    senlab = pandas.read_csv(sl_name, delimiter='|')
 
-    # generate a dataframe consists of 'sentence' 'sentence ids' 'sentence sentiment labels'
-    sen_sen_df = get_sentiment_sentences_dataframe(df, dic, senlab)
+    # load sentiment labels
+    s_values = pd.read_csv(sl_name, delimiter='|')
 
-    return train, dev, test, sen_sen_df
+    # generate a data frame consists of 'sentence' 'sentence id' 'label'
+    df = get_sentiment_sentences_dataframe(df, dic, s_values)
 
+    # split the data set
+    df_train = df.loc[df_split['splitset_label'] == 1]
+    df_test = df.loc[df_split['splitset_label'] == 2]
+    df_dev = df.loc[df_split['splitset_label'] == 3]
 
-def train_w2v(train):
-    # gensim.models.Word2Vec requires lists of list of word which needs to be done by LineSentence
-    train[['sentence']].to_csv('train.txt', header=None, index=None)
-    sentences = gensim.models.word2vec.LineSentence('train.txt')
-
-    # train the word2vec model
-    # the model gives out a 100d vector representing a word
-    wv_model = gensim.models.Word2Vec(sentences, size=100, window=5, min_count=1, workers=4)
-
-    return wv_model
+    return df_train, df_dev, df_test
 
 
-def get_vector_sequence(wv_model, sentence, sequence_length):
-    # generate a vector sequence from a sentence
-    vector_sequence = []
+def get_sentimental_label(sentence, dic, s_values):
+    u_count = 0
 
-    # cut off the part beyond sequence_length
-    for i in range(sequence_length):
-        if i > len(sentence):
-            # pad the sequence with 0's vector
-            vector_sequence.append(np.zeros(100))
-        else:
-            vector_sequence.append(wv_model.wv(sentence[i]))
-    return vector_sequence
-
-
-def get_sentimental_label(sentence, dic, senlab, ucount):
-    # get a sentence's sentiment label
-    # from 'dictionary.txt' and 'sentiment_labels.txt'
-    if (not dic['index'].loc[dic['phrase'] == sentence].values):
-        ucount += 1
-        return(0.5)
-    index = dic['index'].loc[dic['phrase'] == sentence].values[0]
-    label = senlab['sentiment values'].loc[senlab['phrase ids'] == index].values[0]
-    return label
+    index = dic['index'].loc[dic['phrase'] == sentence].values
+    if not index:
+        u_count += 1
+        print(sentence)
+        return 0.5, u_count
+    index = index[0]
+    label = s_values['sentiment values'].loc[s_values['phrase ids'] == index].values[0]
+    return label, u_count
 
 
-def get_sentiment_sentences_dataframe(df, dic, senlab):
-    labels = []
-    ucount = 0
-    for i in range(df.shape[0]):
-        labels.append(get_sentimental_label(df['sentence'][i], dic, senlab, ucount))
-        print(str(i) + '               ' + str(labels[i]))
+def get_sentiment_sentences_dataframe(df, dic, s_values):
+    labels = [None] * df.shape[0]
+    u_count = 0
+
+    for index, row in df.iterrows():
+        labels[index], u_count_temp = get_sentimental_label(row['sentence'], dic, s_values)
+        u_count += u_count_temp
+
+    print('Number of unmatched sentences: ' + str(u_count))
+
     df['labels'] = labels
-    print('Number of unknown sentences' + str(ucount))
+    df['labels'] = pd.cut(df['labels'],
+                          [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                          include_lowest=True,
+                          labels=["very negative", "negative", "neutral", "positive", "very positive"])
+
     return df
 
 
-def train_LSTM(train, dev, wv_model):
-    LSTM_model = Sequential()
+def clean_sentence(sentence):
+    replace_dict = {"-LRB-": "(",
+                    "-RRB-": ")",
+                    "Ã©": "é",
+                    "Ã³": "ó",
+                    "Ã­": "í",
+                    "Ã¼": "ü",
+                    "Ã¡": "á",
+                    "Ã¦": "æ",
+                    "Â": "",
+                    "Ã ": "à",
+                    "Ã¢": "â",
+                    "Ã±": "ñ",
+                    "Ã¯": "ï",
+                    "Ã´": "ô",
+                    "Ã¨": "è",
+                    "Ã¶": "ö",
+                    "Ã£": "ã",
+                    "Ã»": "û",
+                    "Ã§": "ç"}
+
+    for key, value in replace_dict.items():
+        sentence = sentence.replace(key, value)
+    return sentence
 
 
-train, dev, test, sen_sen_df = data_preparation('stanfordSentimentTreebank/datasetSentences.txt',
-                                                'stanfordSentimentTreebank/dictionary.txt',
-                                                'stanfordSentimentTreebank/sentiment_labels.txt',
-                                                'stanfordSentimentTreebank/datasetSplit.txt')
-wv_model = train_w2v(train)
+train, dev, test = data_preparation('stanfordSentimentTreebank/datasetSentences.txt',
+                                    'stanfordSentimentTreebank/dictionary.txt',
+                                    'stanfordSentimentTreebank/sentiment_labels.txt',
+                                    'stanfordSentimentTreebank/datasetSplit.txt')
+
+train.to_csv('train.csv', index=None)
+dev.to_csv('dev.csv', index=None)
+test.to_csv('test.csv', index=None)
