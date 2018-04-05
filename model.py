@@ -157,7 +157,7 @@ for sentence, tag in zip(evaluation_data, tags):
     model.hidden = model.init_hidden()
 
     # Step 2. Turn inputs into pytorch Variables.
-    sentence = autograd.Variable(torch.DoubleTensor(sentence))
+    sentence = autograd.Variable(torch.FloatTensor(sentence))
     tag = autograd.Variable(torch.FloatTensor([tag]))
 
     # Step 3. Run our forward pass.
