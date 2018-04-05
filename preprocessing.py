@@ -55,7 +55,8 @@ def get_sentiment_sentences_dataframe(df, dic, s_values):
     df['labels'] = pd.cut(df['labels'],
                           [0, 0.2, 0.4, 0.6, 0.8, 1.0],
                           include_lowest=True,
-                          labels=["very negative", "negative", "neutral", "positive", "very positive"])
+                          # labels=["very negative", "negative", "neutral", "positive", "very positive"])
+                          labels=[0.1, 0.3, 0.5, 0.7, 0.9])
 
     return df
 
@@ -87,10 +88,10 @@ def clean_sentence(sentence):
 
 
 if __name__ == "__main__":
-    train, dev, test = data_preparation('stanfordSentimentTreebank/datasetSentences.txt',
-                                        'stanfordSentimentTreebank/dictionary.txt',
-                                        'stanfordSentimentTreebank/sentiment_labels.txt',
-                                        'stanfordSentimentTreebank/datasetSplit.txt')
+    train, dev, test = data_preparation('data/datasetSentences.txt',
+                                        'data/dictionary.txt',
+                                        'data/sentiment_labels.txt',
+                                        'data/datasetSplit.txt')
 
     train[['sentence']].to_csv('train.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
     dev[['sentence']].to_csv('dev.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
