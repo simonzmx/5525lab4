@@ -10,13 +10,14 @@ import warnings
 warnings.filterwarnings(action='ignore', category=UserWarning, module='gensim')
 import gensim
 
+
 ####################
 # Hyper parameters #
 ####################
 WORD_VECTOR_DIM = 256
 MAX_LENGTH = 128  # max sentence length
 HIDDEN_DIM = 128   # LSTM output dimension
-N_EPOCHS = 50
+N_EPOCHS = 20
 WINDOW_SIZE = 2
 LEARNING_RATE = 1.2
 BATCH_SIZE = 32
@@ -85,7 +86,7 @@ def train(model, loss_f, opt, x, y):
 
     model.zero_grad()
     y_pred = model(x)
-    loss = loss_f(y_pred, y) / x.size(0)  # TODO: what should be the denominator?
+    loss = loss_f(y_pred, y)
     loss.backward()
     opt.step()
 
@@ -98,10 +99,22 @@ def predict(model, loss_f, x, y):
     y = autograd.Variable(y, requires_grad=False)
 
     y_pred = model(x)
-    loss = loss_f(y_pred, y) / x.size(0)  # TODO: what should be the denominator?
-
+    loss = loss_f(y_pred, y)
     y_pred = np.argmax(y_pred.data.numpy(), axis=1)
     return loss.data[0], np.sum(y_pred == y.data.numpy())
+
+
+def plot_performance(n_epochs, train_array, eval_array, y_label):
+    fig = plt.figure(figsize=(15, 5))
+    x_axis = range(n_epochs)
+    ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+    ax.plot(x_axis, train_array, marker="o", label="train")
+    ax.plot(x_axis, eval_array, marker="o", label="eval")
+    plt.xticks(x_axis)
+    plt.xlabel("epoch")
+    plt.ylabel(y_label)
+    plt.legend()
+    plt.savefig(y_label + ".png")
 
 
 ##########################
@@ -171,7 +184,7 @@ lstm_model = LSTMNet(WORD_VECTOR_DIM, HIDDEN_DIM, N_CLASS, WINDOW_SIZE, MAX_LENG
 loss_function = nn.CrossEntropyLoss()
 optimizer = optim.Adadelta(lstm_model.parameters(), lr=LEARNING_RATE)
 
-print("---------------------------- Begin Training -------------------------")
+print("------------------------------- Begin Training ---------------------------------")
 
 loss_train = np.zeros(N_EPOCHS)
 loss_eval = np.zeros(N_EPOCHS)
@@ -181,17 +194,15 @@ acc_eval = np.zeros(N_EPOCHS)
 for e in range(N_EPOCHS):
     correct_train = 0
     loss_train_e = 0.0
-    n_batches = 0
     for data, label in loader:
         loss_per_batch, correct_per_batch = train(lstm_model, loss_function, optimizer, data, label)
         correct_train += correct_per_batch
         loss_train_e += loss_per_batch
-        n_batches += 1
 
     loss_eval[e], correct_eval = predict(lstm_model, loss_function, x_eval, y_eval)
-    loss_train[e] = loss_train_e / n_batches
-    acc_train[e] = correct_train / train_size * 100
-    acc_eval[e] = correct_eval / eval_size * 100
+    loss_train[e] = loss_train_e / len(loader)  # len(loader): number of batches
+    acc_train[e] = correct_train / train_size
+    acc_eval[e] = correct_eval / eval_size
 
     print('epoch {}, train loss {}, test loss {}, train acc {} ,test acc {}'.format(
         e, loss_train[e], loss_eval[e], acc_train[e], acc_eval[e]))
@@ -200,21 +211,5 @@ for e in range(N_EPOCHS):
 ##########################
 # Plot loss and accuracy #
 ##########################
-fig = plt.figure()
-x_axis = range(N_EPOCHS)
-ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
-ltr, = ax.plot(x_axis, loss_train, marker="o", label="loss train")
-lev, = ax.plot(x_axis, loss_eval, marker="o", label="loss eval")
-plt.xlabel("epoch")
-plt.ylabel("loss")
-plt.legend()
-plt.savefig("loss.png")
-
-fig = plt.figure()
-ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
-actr, = ax.plot(x_axis, acc_train, marker="o", label="acc train")
-acev, = ax.plot(x_axis, acc_eval, marker="o", label="acc eval")
-plt.xlabel("epoch")
-plt.ylabel("acc")
-plt.legend()
-plt.savefig("acc.png")
+plot_performance(N_EPOCHS, loss_train, loss_eval, "loss")
+plot_performance(N_EPOCHS, acc_train, acc_eval, "acc")
