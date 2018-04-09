@@ -2,45 +2,64 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
+import torch.utils.data as Data
 import numpy as np
+import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings(action='ignore', category=UserWarning, module='gensim')
 import gensim
 
-# Hyper parameters
-WORD_VECTOR_DIM = 300
+####################
+# Hyper parameters #
+####################
+WORD_VECTOR_DIM = 256
 MAX_LENGTH = 128  # max sentence length
-
-HIDDEN_DIM = 64  # output dimension of LSTM
-N_EPOCHS = 3
-WINDOW_SIZE = 3
-LEARNING_RATE = 0.1
+HIDDEN_DIM = 128   # LSTM output dimension
+N_EPOCHS = 50
+WINDOW_SIZE = 2
+LEARNING_RATE = 1.2
 BATCH_SIZE = 32
+N_CLASS = 5
+label_to_idx = {"very negative": 0, "negative": 1, "neutral": 2, "positive": 3, "very positive": 4}
+torch.manual_seed(0)
 
-torch.manual_seed(42)
 
-
+#########
+# Model #
+#########
 class LSTMNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim, out_dim, kernel_size):
+    def __init__(self, input_dim, hidden_dim, out_dim, kernel_size, max_length):
         super(LSTMNet, self).__init__()
         self.hidden_dim = hidden_dim
-
-        # The LSTM takes word vectors as inputs, and outputs hidden states
-        # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(input_dim, hidden_dim)
-        self.max_pooling = torch.nn.MaxPool1d(kernel_size)
         self.out_dim = out_dim
-        # self.output_layer = nn.Linear(hidden_dim, out_dim)
+        self.max_length = max_length
+
+        self.lstm = nn.LSTM(input_dim, hidden_dim)
+        self.pooling = torch.nn.AvgPool1d(kernel_size)
+
+        fc_in_dim = hidden_dim // kernel_size * max_length
+
+        self.fc = nn.Linear(fc_in_dim, self.out_dim)
+
+    def hidden_init(self, batch_size):
+        h0 = torch.Tensor(1, batch_size, self.hidden_dim)
+        c0 = torch.Tensor(1, batch_size, self.hidden_dim)
+        nn.init.xavier_normal(h0)
+        nn.init.xavier_normal(c0)
+        return autograd.Variable(h0), autograd.Variable(c0)
 
     def forward(self, x):
-        batch_size = x.size()[1]
-        hidden = (autograd.Variable(torch.zeros(1, batch_size, self.hidden_dim)),
-                  autograd.Variable(torch.zeros(1, batch_size, self.hidden_dim)))
+        batch_size = x.size(0)
+        hidden = self.hidden_init(batch_size)
+
+        x = x.view(self.max_length, batch_size, -1)
         x, hidden = self.lstm(x, hidden)
-        x = self.max_pooling(x)  # (MAX_LENGTH, batch_size, -1)
-        output_layer = nn.Linear(x[-1].data.shape[1], self.out_dim)  # only keep the output of the last LSTM cell
-        x = output_layer(x[-1])
-        return x
+        x = self.pooling(x)
+
+        x = x.view(batch_size, -1)
+        x = self.fc(x)
+        return F.softmax(x, dim=1)
 
 
 def get_sentences_vectors(w2v_model, sen, max_length, wv_dim):
@@ -60,27 +79,41 @@ def get_sentences_vectors(w2v_model, sen, max_length, wv_dim):
     return vectors, u_words
 
 
-def train(model, loss_function, optimizer, x, y):
+def train(model, loss_f, opt, x, y):
     x = autograd.Variable(x, requires_grad=False)
     y = autograd.Variable(y, requires_grad=False)
+
     model.zero_grad()
-    y_pred = model(x)  # shape: (32,)
-    loss = loss_function(y_pred, y)
+    y_pred = model(x)
+    loss = loss_f(y_pred, y) / x.size(0)  # TODO: what should be the denominator?
     loss.backward()
-    optimizer.step()
-    error = np.abs(y_pred.data.numpy().ravel() - y.data.numpy())
-    return loss.data[0], (error < 0.2).sum()
+    opt.step()
+
+    y_pred = np.argmax(y_pred.data.numpy(), axis=1)
+    return loss.data[0], np.sum(y_pred == y.data.numpy())
 
 
-# Train a word2vec model
+def predict(model, loss_f, x, y):
+    x = autograd.Variable(x, requires_grad=False)
+    y = autograd.Variable(y, requires_grad=False)
+
+    y_pred = model(x)
+    loss = loss_f(y_pred, y) / x.size(0)  # TODO: what should be the denominator?
+
+    y_pred = np.argmax(y_pred.data.numpy(), axis=1)
+    return loss.data[0], np.sum(y_pred == y.data.numpy())
+
+
+##########################
+# Train a word2vec model #
+##########################
 sentences = gensim.models.word2vec.LineSentence('train.txt')
 word2vec_model = gensim.models.Word2Vec(sentences, size=WORD_VECTOR_DIM, window=5, min_count=1, workers=4)
 
 
-############################
-# Prepare data for pytorch #
-############################
-# Get word vectors for training data
+#####################
+# Get training data #
+#####################
 train_size = len(list(sentences))
 x_train = np.zeros((train_size, MAX_LENGTH, WORD_VECTOR_DIM))
 total_words = 0
@@ -88,76 +121,100 @@ for i, sentence in enumerate(sentences):
     total_words += len(sentence)
     x_train[i], _ = get_sentences_vectors(word2vec_model, sentence, MAX_LENGTH, WORD_VECTOR_DIM)
 
-# x_train.shape: (train_size, MAX_LENGTH, WORD_VECTOR_DIM)
-x_train = np.swapaxes(x_train, 0, 1)
-# x_train.shape: (MAX_LENGTH, train_size, WORD_VECTOR_DIM)
-
 # convert to float tensor
 x_train = torch.from_numpy(x_train).float()
 
 # Get labels for training data
-y_train = np.zeros(train_size)  # y_train.shape(train_size,)
+y_train = np.zeros(train_size).astype(int)
 with open('train_labels.txt', 'r') as f:
     for i, line in enumerate(f):
-        y_train[i] = line
+        y_train[i] = label_to_idx[line[:-1]]  # remove "\n"
 
-# Get output dimension
-if len(y_train.shape) == 1:
-    output_dim = 1
-else:
-    output_dim = y_train.shape[1]
+y_train = torch.LongTensor(y_train)
 
-# convert y_train to float tensor
-y_train = torch.from_numpy(y_train).float()
+train_set = Data.TensorDataset(data_tensor=x_train, target_tensor=y_train)
+loader = Data.DataLoader(dataset=train_set, batch_size=BATCH_SIZE, shuffle=True)
 
 
-# Get evaluation data
+#######################
+# Get evaluation data #
+#######################
 sentences = gensim.models.word2vec.LineSentence('dev.txt')
 unseen_words = 0
 total_words = 0
 
-evaluation_size = len(list(sentences))
-x_evaluation = np.zeros((evaluation_size, MAX_LENGTH, WORD_VECTOR_DIM))
+eval_size = len(list(sentences))
+x_eval = np.zeros((eval_size, MAX_LENGTH, WORD_VECTOR_DIM))
 for i, sentence in enumerate(sentences):
     total_words += len(sentence)
-    x_evaluation[i], temp = get_sentences_vectors(word2vec_model, sentence, MAX_LENGTH, WORD_VECTOR_DIM)
+    x_eval[i], temp = get_sentences_vectors(word2vec_model, sentence, MAX_LENGTH, WORD_VECTOR_DIM)
     unseen_words += temp
 
-x_evaluation = np.swapaxes(x_evaluation, 0, 1)
-x_evaluation = torch.from_numpy(x_evaluation).float()
+# convert to float tensor
+x_eval = torch.from_numpy(x_eval).float()
 
-y_true = np.zeros(evaluation_size)  # y_train.shape(train_size,)
+y_eval = np.zeros(eval_size).astype(int)   # (train_size,)
 with open('dev_labels.txt', 'r') as f:
     for i, line in enumerate(f):
-        y_true[i] = line
+        y_eval[i] = label_to_idx[line[:-1]]
 
-print("------------------------------------------")
-print("Proportion of unseen words: ", unseen_words / total_words)
+y_eval = torch.LongTensor(y_eval)
+
+print("---------------------------------------------------------------------------------")
+print("Proportion of unseen words in evaluation set: ", unseen_words / total_words * 100)
 
 
 ##################
 # Train the LSTM #
 ##################
-lstm_model = LSTMNet(WORD_VECTOR_DIM, HIDDEN_DIM, output_dim, WINDOW_SIZE)
-mse_loss = nn.MSELoss()
-sgd = optim.SGD(lstm_model.parameters(), lr=LEARNING_RATE, momentum=0.9)
+lstm_model = LSTMNet(WORD_VECTOR_DIM, HIDDEN_DIM, N_CLASS, WINDOW_SIZE, MAX_LENGTH)
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.Adadelta(lstm_model.parameters(), lr=LEARNING_RATE)
 
-print("------------- Begin Training -------------")
-for epoch in range(N_EPOCHS):
-    total_correct = 0
-    total_loss = 0.0
-    n_batches = train_size // BATCH_SIZE
-    for i in range(n_batches):
-        start, end = i * BATCH_SIZE, (i + 1) * BATCH_SIZE
-        loss_per_batch, correct_per_batch = train(lstm_model,
-                                                  mse_loss,
-                                                  sgd,
-                                                  x_train[:, start:end, :],
-                                                  y_train[start:end])
-        total_loss += loss_per_batch
-        total_correct += correct_per_batch
-    y_evaluation = lstm_model(autograd.Variable(x_evaluation, requires_grad=False))
-    evaluation_error = np.abs(y_evaluation.data.numpy().ravel() - y_true)
-    evaluation_correct = (evaluation_error < 0.2).sum()
-    print('epoch {}, loss {}, train accuracy {}, test accuracy {}'.format(
-        epoch, total_loss, total_correct / train_size, evaluation_correct / evaluation_size))
+print("---------------------------- Begin Training -------------------------")
+
+loss_train = np.zeros(N_EPOCHS)
+loss_eval = np.zeros(N_EPOCHS)
+acc_train = np.zeros(N_EPOCHS)
+acc_eval = np.zeros(N_EPOCHS)
+
+for e in range(N_EPOCHS):
+    correct_train = 0
+    loss_train_e = 0.0
+    n_batches = 0
+    for data, label in loader:
+        loss_per_batch, correct_per_batch = train(lstm_model, loss_function, optimizer, data, label)
+        correct_train += correct_per_batch
+        loss_train_e += loss_per_batch
+        n_batches += 1
+
+    loss_eval[e], correct_eval = predict(lstm_model, loss_function, x_eval, y_eval)
+    loss_train[e] = loss_train_e / n_batches
+    acc_train[e] = correct_train / train_size * 100
+    acc_eval[e] = correct_eval / eval_size * 100
+
+    print('epoch {}, train loss {}, test loss {}, train acc {} ,test acc {}'.format(
+        e, loss_train[e], loss_eval[e], acc_train[e], acc_eval[e]))
+
+
+##########################
+# Plot loss and accuracy #
+##########################
+fig = plt.figure()
+x_axis = range(N_EPOCHS)
+ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+ltr, = ax.plot(x_axis, loss_train, marker="o", label="loss train")
+lev, = ax.plot(x_axis, loss_eval, marker="o", label="loss eval")
+plt.xlabel("epoch")
+plt.ylabel("loss")
+plt.legend()
+plt.savefig("loss.png")
+
+fig = plt.figure()
+ax = fig.add_axes([0.1, 0.1, 0.8, 0.8])
+actr, = ax.plot(x_axis, acc_train, marker="o", label="acc train")
+acev, = ax.plot(x_axis, acc_eval, marker="o", label="acc eval")
+plt.xlabel("epoch")
+plt.ylabel("acc")
+plt.legend()
+plt.savefig("acc.png")
