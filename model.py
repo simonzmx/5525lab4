@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.utils.data as Data
+
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
@@ -22,7 +24,9 @@ WINDOW_SIZE = 4
 LEARNING_RATE = 1.1
 BATCH_SIZE = 32
 N_CLASS = 5
-label_to_idx = {"very negative": 0, "negative": 1, "neutral": 2, "positive": 3, "very positive": 4}
+label_column = 'fine_grained'
+label_to_idx = {"fine_grained": {"very negative": 0, "negative": 1, "neutral": 2, "positive": 3, "very positive": 4},
+                "raw": {"negative": 0, "positive": 1}}
 torch.manual_seed(0)
 
 
@@ -137,11 +141,9 @@ for i, sentence in enumerate(sentences):
 x_train = torch.from_numpy(x_train).float()
 
 # Get labels for training data
-y_train = np.zeros(train_size).astype(int)
-with open('train_labels.txt', 'r') as f:
-    for i, line in enumerate(f):
-        y_train[i] = label_to_idx[line[:-1]]  # remove "\n"
+y_train = pd.read_csv('train_labels.csv')[label_column].map(label_to_idx[label_column]).values
 
+# Convert to long integer tensor
 y_train = torch.LongTensor(y_train)
 
 train_set = Data.TensorDataset(data_tensor=x_train, target_tensor=y_train)
@@ -162,14 +164,13 @@ for i, sentence in enumerate(sentences):
     x_eval[i], temp = get_sentences_vectors(word2vec_model, sentence, MAX_LENGTH, WORD_VECTOR_DIM)
     unseen_words += temp
 
-# convert to float tensor
+# Convert to float tensor
 x_eval = torch.from_numpy(x_eval).float()
 
-y_eval = np.zeros(eval_size).astype(int)   # (train_size,)
-with open('dev_labels.txt', 'r') as f:
-    for i, line in enumerate(f):
-        y_eval[i] = label_to_idx[line[:-1]]
+# Get labels for training data
+y_eval = pd.read_csv('dev_labels.csv')[label_column].map(label_to_idx[label_column]).values
 
+# Convert to long integer tensor
 y_eval = torch.LongTensor(y_eval)
 
 print("---------------------------------------------------------------------------------")
