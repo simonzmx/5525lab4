@@ -17,9 +17,9 @@ import gensim
 WORD_VECTOR_DIM = 256
 MAX_LENGTH = 128  # max sentence length
 HIDDEN_DIM = 128   # LSTM output dimension
-N_EPOCHS = 20
-WINDOW_SIZE = 2
-LEARNING_RATE = 1.2
+N_EPOCHS = 100
+WINDOW_SIZE = 4
+LEARNING_RATE = 1.1
 BATCH_SIZE = 32
 N_CLASS = 5
 label_to_idx = {"very negative": 0, "negative": 1, "neutral": 2, "positive": 3, "very positive": 4}
@@ -40,14 +40,13 @@ class LSTMNet(nn.Module):
         self.pooling = torch.nn.AvgPool1d(kernel_size)
 
         fc_in_dim = hidden_dim // kernel_size * max_length
-
         self.fc = nn.Linear(fc_in_dim, self.out_dim)
 
     def hidden_init(self, batch_size):
-        h0 = torch.Tensor(1, batch_size, self.hidden_dim)
-        c0 = torch.Tensor(1, batch_size, self.hidden_dim)
-        nn.init.xavier_normal(h0)
-        nn.init.xavier_normal(c0)
+        h0 = torch.zeros(1, batch_size, self.hidden_dim)
+        c0 = torch.zeros(1, batch_size, self.hidden_dim)
+        # nn.init.xavier_normal(h0)
+        # nn.init.xavier_normal(c0)
         return autograd.Variable(h0), autograd.Variable(c0)
 
     def forward(self, x):
