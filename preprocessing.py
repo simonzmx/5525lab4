@@ -51,12 +51,15 @@ def get_sentiment_sentences_dataframe(df, dic, s_values):
 
     print('Number of unmatched sentences: ' + str(u_count))
 
-    df['labels'] = labels
-    df['labels'] = pd.cut(df['labels'],
-                          [0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                          include_lowest=True,
-                          # labels=[0.1, 0.3, 0.5, 0.7, 0.9])
-                          labels=["very negative", "negative", "neutral", "positive", "very positive"])
+    df['score'] = labels
+    df['fine_grained'] = pd.cut(df['score'],
+                                [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                                include_lowest=True,
+                                labels=["very negative", "negative", "neutral", "positive", "very positive"])
+    df['raw'] = pd.cut(df['score'],
+                       [0, 0.5, 1.0],
+                       include_lowest=True,
+                       labels=["negative", "positive"])
     return df
 
 
@@ -96,6 +99,6 @@ if __name__ == "__main__":
     dev[['sentence']].to_csv('dev.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
     test[['sentence']].to_csv('test.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
 
-    train[['labels']].to_csv('train_labels.txt', header=None, index=None)
-    dev[['labels']].to_csv('dev_labels.txt', header=None, index=None)
-    test[['labels']].to_csv('test_labels.txt', header=None, index=None)
+    train[['score', 'fine_grained', 'raw']].to_csv('train_labels.csv', index=None)
+    dev[['score', 'fine_grained', 'raw']].to_csv('dev_labels.csv', index=None)
+    test[['score', 'fine_grained', 'raw']].to_csv('test_labels.csv', index=None)
