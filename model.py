@@ -19,7 +19,7 @@ import gensim
 WORD_VECTOR_DIM = 256
 MAX_LENGTH = 128  # max sentence length
 HIDDEN_DIM = 128   # LSTM output dimension
-N_EPOCHS = 100
+N_EPOCHS = 1
 WINDOW_SIZE = 4
 LEARNING_RATE = 1.1
 BATCH_SIZE = 32
