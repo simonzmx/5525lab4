@@ -12,7 +12,7 @@ from gensim.models.word2vec import Word2Vec, LineSentence
 
 
 WORD_VECTOR_DIM = 256
-WV_PATH = 'models/wv'
+WV_PATH = 'data/wv'
 
 
 def data_preparation(file_name, dic_name, sl_name, split_file):
@@ -103,23 +103,8 @@ def clean_sentence(sentence):
     return sentence
 
 
-def main():
+def get_w2v():
     start = time.time()
-
-    # print("Start preparing data.")
-    # train, dev, test = data_preparation('raw_data/datasetSentences.txt',
-    #                                     'raw_data/dictionary.txt',
-    #                                     'raw_data/sentiment_labels.txt',
-    #                                     'raw_data/datasetSplit.txt')
-    #
-    # train[['sentence']].to_csv('data/train.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
-    # dev[['sentence']].to_csv('data/dev.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
-    # test[['sentence']].to_csv('data/test.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
-    #
-    # train[['score', 'fine_grained', 'raw']].to_csv('data/train_labels.csv', index=None)
-    # dev[['score', 'fine_grained', 'raw']].to_csv('data/dev_labels.csv', index=None)
-    # test[['score', 'fine_grained', 'raw']].to_csv('data/test_labels.csv', index=None)
-
     print("Start training w2v.")
     sentences_train = LineSentence('data/train.txt')
     sentences_dev = LineSentence('data/dev.txt')
@@ -145,13 +130,38 @@ def main():
     x_dev = [[keyed_vectors.vocab[token].index for token in d if token in keyed_vectors.vocab] for d in sentences_dev]
     x_test = [[keyed_vectors.vocab[token].index for token in d if token in keyed_vectors.vocab] for d in sentences_test]
 
-    np.save('models/wv/word_vectors', word_vectors)
-    np.save('models/wv/index2word', keyed_vectors.index2word)
-    np.save('models/wv/x_train', x_train)
-    np.save('models/wv/x_dev', x_dev)
-    np.save('models/wv/x_test', x_test)
+    np.save('data/wv/word_vectors', word_vectors)
+    np.save('data/wv/index2word', keyed_vectors.index2word)
+    np.save('data/wv/x_train', x_train)
+    np.save('data/wv/x_dev', x_dev)
+    np.save('data/wv/x_test', x_test)
 
     print("Time used: {}".format(time.time() - start))
+
+
+def process_data():
+    start = time.time()
+
+    print("Start preparing data.")
+    train, dev, test = data_preparation('raw_data/datasetSentences.txt',
+                                        'raw_data/dictionary.txt',
+                                        'raw_data/sentiment_labels.txt',
+                                        'raw_data/datasetSplit.txt')
+
+    train[['sentence']].to_csv('data/train.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+    dev[['sentence']].to_csv('data/dev.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+    test[['sentence']].to_csv('data/test.txt', header=None, index=None, sep='\t', quoting=csv.QUOTE_NONE)
+
+    train[['score', 'fine_grained', 'raw']].to_csv('data/train_labels.csv', index=None)
+    dev[['score', 'fine_grained', 'raw']].to_csv('data/dev_labels.csv', index=None)
+    test[['score', 'fine_grained', 'raw']].to_csv('data/test_labels.csv', index=None)
+
+    print("Time used: {}".format(time.time() - start))
+
+
+def main():
+    process_data()
+    get_w2v()
 
 
 if __name__ == "__main__":
